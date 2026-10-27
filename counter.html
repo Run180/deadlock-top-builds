@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deadlock Counter Picks</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Layout: enemy strip on top, then two columns: data counters and answers to their build. */
+:root {
+  --bg: #f1eee6; --panel: #fbf9f4; --ink: #1f2420; --muted: #69705f; --line: #d9d4c6;
+  --accent: #2f8f5b; --accent-ink: #ffffff; --threat: #b2463a; --gold: #b07a27;
+  --weapon: #c9792b; --spirit: #8a5fc7; --vitality: #3f9b5a;
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161a17; --panel: #1f2420; --ink: #ece8dc; --muted: #9aa190; --line: #333a33;
+    --accent: #4fc283; --accent-ink: #0f1511; --threat: #e0766a; --gold: #d9a24b;
+    color-scheme: dark;
+  }
+}
+:root.in-game {
+  --bg: #161a17; --panel: #1f2420; --ink: #ece8dc; --muted: #9aa190; --line: #333a33;
+  --accent: #4fc283; --accent-ink: #0f1511; --threat: #e0766a; --gold: #d9a24b;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font: 16px/1.45 var(--body);
+  padding: 16px max(16px, env(safe-area-inset-right, 0px)) 32px max(16px, env(safe-area-inset-left, 0px));
+}
+.wrap { max-width: 1200px; margin: 0 auto; display: grid; gap: 16px; }
+h1 { font: 700 2rem/1 var(--display); text-transform: uppercase; letter-spacing: .02em; margin: 0; }
+h2 { font: 700 1.25rem/1.1 var(--display); text-transform: uppercase; letter-spacing: .04em; margin: 0; }
+.muted { color: var(--muted); }
+.manual { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.manual select, .manual input { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
+.manual input { width: 110px; }
+
+.enemies { display: flex; flex-wrap: wrap; gap: 8px; }
+.enemy {
+  display: flex; align-items: center; gap: 10px; padding: 6px 12px 6px 6px; min-width: 0;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink);
+  font: inherit; cursor: pointer; text-align: left;
+}
+.enemy img { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; background: var(--line); }
+.enemy b { display: block; font: 600 1rem var(--display); letter-spacing: .03em; text-transform: uppercase; }
+.enemy small { color: var(--muted); font-variant-numeric: tabular-nums; }
+.enemy[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.enemy.fed small { color: var(--threat); font-weight: 600; }
+.enemy:focus-visible, .pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.target { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.target img { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; }
+.target .grow { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.mix { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--line); max-width: 360px; }
+.mix span { display: block; height: 100%; }
+.mix .w { background: var(--weapon); } .mix .s { background: var(--spirit); } .mix .v { background: var(--vitality); }
+.held { display: flex; flex-wrap: wrap; gap: 4px; }
+.held span { font-size: .8rem; padding: 1px 6px; border-radius: 4px; background: var(--bg); border: 1px solid var(--line); }
+
+.cols { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 820px) { .cols { grid-template-columns: 1fr; } }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 10px; min-width: 0; }
+.col p { margin: 0; }
+.list { display: grid; gap: 6px; }
+.pick {
+  display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center;
+  padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg);
+  color: var(--ink); font: inherit; text-align: left; cursor: pointer; width: 100%;
+}
+.pick:hover { border-color: var(--accent); }
+.pick img { width: 34px; height: 34px; border-radius: 4px; }
+.pick .nm { font-weight: 600; min-width: 0; }
+.pick .nm small { display: block; color: var(--muted); font-weight: 400; font-size: .8rem; }
+.pick .val { font: 700 1.1rem var(--display); color: var(--accent); font-variant-numeric: tabular-nums; text-align: right; }
+.pick .val small { display: block; font: 400 .75rem var(--body); color: var(--muted); }
+.pick.weapon { border-left: 3px solid var(--weapon); }
+.pick.spirit { border-left: 3px solid var(--spirit); }
+.pick.vitality { border-left: 3px solid var(--vitality); }
+.why { font-size: .9rem; }
+.why b { color: var(--threat); }
+.state { color: var(--muted); padding: 8px 0; }
+.retry { font: inherit; color: var(--accent); background: none; border: 0; cursor: pointer; text-decoration: underline; }
+.foot { color: var(--muted); font-size: .85rem; }
+:root.in-game .foot, :root.in-game .manual { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Counter Picks</h1>
+    <p class="muted" id="intro">Pick an enemy hero and how many souls they have. You'll get the items that win most against that hero when they're that far ahead, plus answers to what they're building.</p>
+  </header>
+
+  <div class="manual" id="manual">
+    <label>Enemy hero <select id="hero-select"></select></label>
+    <label>Their souls <input id="souls-input" type="number" min="0" step="1000" value="30000"></label>
+  </div>
+
+  <div class="enemies" id="enemies" aria-label="Enemy team"></div>
+  <div class="target" id="target" hidden></div>
+
+  <div class="cols">
+    <section class="col">
+      <h2>Wins most against them</h2>
+      <p class="muted" id="data-note">From real matches on deadlock-api.com.</p>
+      <div class="list" id="data-list"><div class="state">Loading…</div></div>
+    </section>
+    <section class="col">
+      <h2>Answer their build</h2>
+      <div id="build-answers" class="list"><div class="state">Waiting for their items…</div></div>
+    </section>
+  </div>
+
+  <p class="foot">“+%” is how much higher the item's win rate is against this hero than usual, compared with other items of the same price. Data: <a href="https://deadlock-api.com" target="_blank" rel="noopener">deadlock-api.com</a>.</p>
+</div>
+
+<script>
+"use strict";
+const API = "https://api.deadlock-api.com";
+const IN_GAME = location.hash.includes("ingame");
+if (IN_GAME) document.documentElement.classList.add("in-game");
+
+// What to buy when an enemy carries certain items. Each rule: their items -> your answer.
+const BUILD_RULES = [
+  { when: ["Bullet Lifesteal", "Spirit Lifesteal", "Melee Lifesteal", "Lifestrike", "Vampiric Burst", "Leech", "Healing Booster",
+           "Healing Rite", "Infuser", "Siphon Bullets", "Restorative Shot", "Radiant Regeneration", "Mystic Regeneration", "Healing Tempo", "Fortitude"],
+    min: 2, title: "They heal a lot", buy: ["Toxic Bullets", "Healbane", "Decay", "Inhibitor"] },
+  { when: ["Unstoppable", "Indomitable", "Debuff Reducer", "Dispel Magic", "Cloak of Opportunity", "Reactive Barrier", "Celestial Blessing"],
+    min: 1, title: "Stuns and silences won't stick", buy: ["Cursed Relic", "Nullification Burst", "Toxic Bullets", "Armor Piercer"] },
+  { when: ["Ethereal Shift", "Metal Skin", "Divine Barrier", "Cheat Death", "Spirit Shielding", "Weapon Shielding", "Ancient Shield", "Prism Blast"],
+    min: 1, title: "They have a get-out-of-death item", buy: ["Cursed Relic", "Silencer", "Knockdown", "Nullification Burst"] },
+  { when: ["Warp Stone", "Majestic Leap", "Fleetfoot", "Magic Carpet", "Kinetic Dash", "Seraphim Wings", "Shadow Step", "Stamina Mastery", "Extra Stamina"],
+    min: 2, title: "Very mobile", buy: ["Capacitor", "Slowing Hex", "Mystical Piano", "Vortex Web"] },
+  { when: ["Colossus", "Juggernaut", "Fortitude", "Extra Health", "Bullet Resilience", "Spirit Resilience", "Plated Armor", "Witchmail", "Battle Vest"],
+    min: 3, title: "Built tanky", buy: ["Armor Piercer", "Tankbuster", "Escalating Exposure", "Crippling Headshot"] },
+];
+const GUN_ANSWER = { title: "Mostly gun damage", buy: ["Bullet Resilience", "Metal Skin", "Plated Armor", "Disarming Hex", "Rusted Barrel"] };
+const SPIRIT_ANSWER = { title: "Mostly spirit damage", buy: ["Spirit Resilience", "Spellbreaker", "Witchmail", "Counterspell", "Spirit Sap"] };
+
+const state = { heroes: [], heroByName: new Map(), items: [], itemByName: new Map(), itemByImage: new Map(), base: null,
+                enemies: [], selected: 0, token: 0, clicks: 0 };
+const $ = (s) => document.querySelector(s);
+
+async function getJSON(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+
+// "34.2k", "34,200", "34200" -> 34200
+function parseSouls(text) {
+  const t = String(text || "").trim().toLowerCase().replace(/\s/g, "");
+  const m = t.match(/^([\d.,]+)(k|m)?$/);
+  if (!m) return 0;
+  let n = m[2] || /[.,]\d{1,2}$/.test(m[1]) ? parseFloat(m[1].replace(",", ".")) : parseFloat(m[1].replace(/[.,]/g, ""));
+  if (m[2] === "k") n *= 1000;
+  if (m[2] === "m") n *= 1e6;
+  return Math.round(n) || 0;
+}
+function fmtSouls(n) { return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(n); }
+
+// Enemy team from the game: #ingame&e=[{"h":"Victor","s":"34.2k","i":["weapon/toxic_bullets",...]}, ...]
+function enemiesFromHash() {
+  const m = location.hash.match(/[#&]e=([^&]*)/);
+  if (!m) return [];
+  try {
+    return JSON.parse(decodeURIComponent(m[1])).map(e => ({
+      hero: state.heroByName.get(String(e.h || "").toLowerCase()),
+      heroText: e.h, souls: parseSouls(e.s),
+      items: (e.i || []).map(k => state.itemByImage.get(String(k).toLowerCase())).filter(Boolean),
+    })).filter(e => e.hero);
+  } catch (err) { return []; }
+}
+
+async function init() {
+  try {
+    const [heroes, items] = await Promise.all([getJSON("/v1/assets/heroes?only_active=true"), getJSON("/v1/assets/items/by-type/upgrade")]);
+    state.heroes = heroes.filter(h => !h.disabled).sort((a, b) => a.name.localeCompare(b.name));
+    for (const h of state.heroes) state.heroByName.set(h.name.toLowerCase(), h);
+    state.items = items.filter(i => i.shopable);
+    for (const i of state.items) {
+      state.itemByName.set(i.name, i);
+      const key = (i.shop_image || "").match(/items\/([a-z_]+\/[a-z0-9_]+)\./i);
+      if (key) state.itemByImage.set(key[1].toLowerCase(), i);
+    }
+  } catch (e) {
+    $("#data-list").innerHTML = '<div class="state">Couldn\'t reach deadlock-api.com. <button class="retry" type="button">Try again</button></div>';
+    $("#data-list .retry").onclick = init;
+    return;
+  }
+  state.enemies = enemiesFromHash();
+  if (state.enemies.length) {
+    $("#intro").textContent = "Your enemy team right now. The most-fed hero is picked; click another to switch. Click an item to find it in the shop.";
+    state.selected = state.enemies.reduce((best, e, i, a) => e.souls > a[best].souls ? i : best, 0);
+    renderEnemies();
+  } else {
+    if (IN_GAME) {
+      $("#intro").textContent = "Couldn't read the enemy team from the game. Pick the hero and their souls instead.";
+      $("#manual").style.display = "flex";
+    }
+    const sel = $("#hero-select");
+    for (const h of state.heroes) sel.add(new Option(h.name, h.name));
+    sel.value = state.heroByName.has("victor") ? "Victor" : state.heroes[0].name;
+    const manualPick = () => {
+      state.enemies = [{ hero: state.heroByName.get(sel.value.toLowerCase()), souls: Number($("#souls-input").value) || 0, items: [] }];
+      state.selected = 0; showTarget();
+    };
+    sel.onchange = manualPick; $("#souls-input").onchange = manualPick;
+    manualPick();
+    return;
+  }
+  showTarget();
+}
+
+function renderEnemies() {
+  const box = $("#enemies");
+  box.replaceChildren();
+  const max = Math.max(...state.enemies.map(e => e.souls));
+  state.enemies.forEach((e, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "enemy" + (e.souls === max && max > 0 ? " fed" : "");
+    b.setAttribute("aria-pressed", String(i === state.selected));
+    const img = document.createElement("img"); img.alt = ""; img.src = e.hero.images.icon_image_small_webp || e.hero.images.icon_image_small;
+    const d = document.createElement("div");
+    const n = document.createElement("b"); n.textContent = e.hero.name;
+    const s = document.createElement("small"); s.textContent = fmtSouls(e.souls) + " souls · " + e.items.length + " items";
+    d.append(n, s); b.append(img, d);
+    b.onclick = () => { state.selected = i; renderEnemies(); showTarget(); };
+    box.append(b);
+  });
+}
+
+function slotMix(items) {
+  const c = { weapon: 0, spirit: 0, vitality: 0 };
+  for (const i of items) c[i.item_slot_type] = (c[i.item_slot_type] || 0) + (i.cost || 0);
+  return c;
+}
+
+function showTarget() {
+  const e = state.enemies[state.selected];
+  const t = $("#target");
+  t.hidden = false; t.replaceChildren();
+  const img = document.createElement("img"); img.alt = ""; img.src = e.hero.images.icon_image_small_webp || e.hero.images.icon_image_small;
+  const g = document.createElement("div"); g.className = "grow";
+  const h = document.createElement("h2"); h.textContent = e.hero.name + (e.souls ? " · " + fmtSouls(e.souls) + " souls" : "");
+  g.append(h);
+  if (e.items.length) {
+    const mix = slotMix(e.items), total = mix.weapon + mix.spirit + mix.vitality || 1;
+    const bar = document.createElement("div"); bar.className = "mix";
+    bar.innerHTML = `<span class="w" style="width:${mix.weapon / total * 100}%"></span><span class="s" style="width:${mix.spirit / total * 100}%"></span><span class="v" style="width:${mix.vitality / total * 100}%"></span>`;
+    const lbl = document.createElement("small"); lbl.className = "muted";
+    lbl.textContent = `Souls in items: ${Math.round(mix.weapon / total * 100)}% weapon · ${Math.round(mix.spirit / total * 100)}% spirit · ${Math.round(mix.vitality / total * 100)}% vitality`;
+    const held = document.createElement("div"); held.className = "held";
+    for (const i of e.items) { const s = document.createElement("span"); s.textContent = i.name; held.append(s); }
+    g.append(bar, lbl, held);
+  }
+  t.append(img, g);
+  renderBuildAnswers(e);
+  loadDataCounters(e);
+}
+
+function pickButton(item, valueHtml, sub) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "pick " + item.item_slot_type;
+  const img = document.createElement("img"); img.alt = ""; img.src = item.shop_image_webp || item.shop_image;
+  const nm = document.createElement("div"); nm.className = "nm"; nm.textContent = item.name;
+  const sm = document.createElement("small"); sm.textContent = sub; nm.append(sm);
+  const val = document.createElement("div"); val.className = "val"; val.innerHTML = valueHtml;
+  b.append(img, nm, val);
+  b.onclick = () => {
+    if (IN_GAME) document.title = "COUNTER_ITEM:" + item.name + ":" + (++state.clicks);
+  };
+  return b;
+}
+
+// Tier 5 (legendary) items carry a placeholder cost of 9999 in the data.
+function costHtml(item) {
+  if (item.item_tier === 5) return "Legendary";
+  return item.cost ? item.cost.toLocaleString() + "<small>souls</small>" : "";
+}
+function costText(item) {
+  return item.item_tier === 5 ? "legendary" : (item.cost || 0).toLocaleString() + " souls";
+}
+
+function renderBuildAnswers(e) {
+  const box = $("#build-answers");
+  box.replaceChildren();
+  if (!e.items.length) {
+    box.innerHTML = '<div class="state">' + (IN_GAME ? "No items seen for this hero yet. Hold TAB once so the scoreboard loads their items, then reopen." : "Open this from the in-game shop to read their items.") + "</div>";
+    return;
+  }
+  const names = new Set(e.items.map(i => i.name));
+  const answers = [];
+  for (const r of BUILD_RULES) {
+    const hits = r.when.filter(n => names.has(n));
+    if (hits.length >= r.min) answers.push({ title: r.title, because: hits, buy: r.buy });
+  }
+  const mix = slotMix(e.items), total = mix.weapon + mix.spirit + mix.vitality;
+  if (total && mix.weapon / total >= 0.5) answers.push({ ...GUN_ANSWER, because: [] });
+  if (total && mix.spirit / total >= 0.45) answers.push({ ...SPIRIT_ANSWER, because: [] });
+  if (!answers.length) {
+    box.innerHTML = '<div class="state">Nothing stands out in their build yet. Go by the left column.</div>';
+    return;
+  }
+  for (const a of answers) {
+    const p = document.createElement("p"); p.className = "why";
+    p.innerHTML = "<b></b> <span class=\"muted\"></span>";
+    p.querySelector("b").textContent = a.title;
+    p.querySelector("span").textContent = a.because.length ? "(" + a.because.join(", ") + ")" : "";
+    box.append(p);
+    for (const n of a.buy) {
+      const item = state.itemByName.get(n);
+      if (item && !names.has(n)) box.append(pickButton(item, costHtml(item), item.item_slot_type));
+    }
+  }
+}
+
+async function loadDataCounters(e) {
+  const token = ++state.token;
+  const list = $("#data-list");
+  list.innerHTML = '<div class="state">Loading match data for ' + e.hero.name + '…</div>';
+  try {
+    if (!state.base) state.base = new Map((await getJSON("/v1/analytics/item-stats?min_matches=200")).map(r => [r.item_id, r]));
+    // Prefer games where this hero ended with at least the souls they have now; widen if too few games.
+    let rows = [], used = "";
+    for (const floor of e.souls >= 5000 ? [e.souls, Math.round(e.souls * 0.7), 0] : [0]) {
+      const q = `/v1/analytics/item-stats?min_matches=150&enemy_hero_ids=${e.hero.id}` + (floor ? `&min_enemy_networth=${floor}` : "");
+      rows = await getJSON(q);
+      if (token !== state.token) return;
+      if (rows.filter(r => r.matches >= 300).length >= 20) { used = floor ? `games where ${e.hero.name} ended with ${fmtSouls(floor)}+ souls` : `all games against ${e.hero.name}`; break; }
+    }
+    if (token !== state.token) return;
+    const byId = new Map(state.items.map(i => [i.id, i]));
+    rows = rows.filter(r => r.matches >= 300 && byId.has(r.item_id) && state.base.has(r.item_id));
+    const raw = new Map(rows.map(r => [r.item_id, r.wins / r.matches - state.base.get(r.item_id).wins / state.base.get(r.item_id).matches]));
+    const shift = {};
+    for (const tier of new Set(rows.map(r => byId.get(r.item_id).item_tier))) {
+      const ids = rows.filter(r => byId.get(r.item_id).item_tier === tier);
+      shift[tier] = ids.reduce((s, r) => s + raw.get(r.item_id) * r.matches, 0) / ids.reduce((s, r) => s + r.matches, 0);
+    }
+    const held = new Set(e.items.map(i => i.id));
+    const ranked = rows.map(r => {
+      const wr = r.wins / r.matches;
+      return { item: byId.get(r.item_id), lift: raw.get(r.item_id) - shift[byId.get(r.item_id).item_tier], se: Math.sqrt(wr * (1 - wr) / r.matches), matches: r.matches };
+    }).filter(x => x.lift > 0 && x.lift >= 2 * x.se && !held.has(x.item.id)).sort((a, b) => b.lift - a.lift).slice(0, 8);
+    $("#data-note").textContent = "From " + used + ", last 30 days.";
+    list.replaceChildren();
+    if (!ranked.length) { list.innerHTML = '<div class="state">No item clearly beats this hero in the data. Use the build answers.</div>'; return; }
+    for (const x of ranked) list.append(pickButton(x.item, "+" + (x.lift * 100).toFixed(1) + "%<small>" + x.matches.toLocaleString() + " games</small>", x.item.item_slot_type + " · " + costText(x.item)));
+  } catch (err) {
+    if (token !== state.token) return;
+    list.innerHTML = '<div class="state">Couldn\'t load match data. <button class="retry" type="button">Try again</button></div>';
+    list.querySelector(".retry").onclick = () => loadDataCounters(e);
+  }
+}
+
+window.addEventListener("hashchange", () => { state.enemies = enemiesFromHash(); if (state.enemies.length) { state.selected = state.enemies.reduce((b, e, i, a) => e.souls > a[b].souls ? i : b, 0); renderEnemies(); showTarget(); } });
+init();
+</script>
+</body>
+</html>
