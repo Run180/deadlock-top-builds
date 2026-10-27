@@ -165,7 +165,8 @@ function parseSouls(text) {
 }
 function fmtSouls(n) { return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(n); }
 
-// Enemy team from the game: #ingame&e=[{"h":"Victor","s":"34.2k","i":["weapon/toxic_bullets",...]}, ...]
+// Enemy team from the game: #ingame&e=[{"h":"Victor","s":"34.2k","i":["Toxic Bullets",...]}, ...]
+// (older mod builds sent image keys like "weapon/toxic_bullets"; both are accepted)
 function enemiesFromHash() {
   const m = location.hash.match(/[#&]e=([^&]*)/);
   if (!m) return [];
@@ -173,7 +174,7 @@ function enemiesFromHash() {
     return JSON.parse(decodeURIComponent(m[1])).map(e => ({
       hero: state.heroByName.get(String(e.h || "").toLowerCase()),
       heroText: e.h, souls: parseSouls(e.s),
-      items: (e.i || []).map(k => state.itemByImage.get(String(k).toLowerCase())).filter(Boolean),
+      items: (e.i || []).map(k => state.itemByName.get(String(k)) || state.itemByImage.get(String(k).toLowerCase())).filter(Boolean),
     })).filter(e => e.hero);
   } catch (err) { return []; }
 }
