@@ -128,9 +128,10 @@ if (IN_GAME) document.documentElement.classList.add("in-game");
 
 // What to buy when an enemy carries certain items. Each rule: their items -> your answer.
 const BUILD_RULES = [
-  { when: ["Bullet Lifesteal", "Spirit Lifesteal", "Melee Lifesteal", "Lifestrike", "Vampiric Burst", "Leech", "Healing Booster",
-           "Healing Rite", "Infuser", "Siphon Bullets", "Restorative Shot", "Radiant Regeneration", "Mystic Regeneration", "Healing Tempo", "Fortitude"],
-    min: 2, title: "They heal a lot", buy: ["Toxic Bullets", "Healbane", "Decay", "Inhibitor"] },
+  { when: ["Bullet Lifesteal", "Spirit Lifesteal", "Vampiric Burst", "Leech", "Healing Booster", "Infuser", "Siphon Bullets", "Radiant Regeneration"],
+    min: 1, title: "They're building healing", buy: ["Toxic Bullets", "Healbane", "Decay", "Inhibitor"] },
+  { when: ["Melee Lifesteal", "Lifestrike", "Healing Rite", "Restorative Shot", "Mystic Regeneration", "Healing Tempo", "Fortitude", "Extra Regen"],
+    min: 2, title: "Lots of small heals", buy: ["Toxic Bullets", "Healbane", "Decay"] },
   { when: ["Unstoppable", "Indomitable", "Debuff Reducer", "Dispel Magic", "Cloak of Opportunity", "Reactive Barrier", "Celestial Blessing"],
     min: 1, title: "Stuns and silences won't stick", buy: ["Cursed Relic", "Nullification Burst", "Toxic Bullets", "Armor Piercer"] },
   { when: ["Ethereal Shift", "Metal Skin", "Divine Barrier", "Cheat Death", "Spirit Shielding", "Weapon Shielding", "Ancient Shield", "Prism Blast"],
@@ -142,6 +143,7 @@ const BUILD_RULES = [
 ];
 const GUN_ANSWER = { title: "Mostly gun damage", buy: ["Bullet Resilience", "Metal Skin", "Plated Armor", "Disarming Hex", "Rusted Barrel"] };
 const SPIRIT_ANSWER = { title: "Mostly spirit damage", buy: ["Spirit Resilience", "Spellbreaker", "Witchmail", "Counterspell", "Spirit Sap"] };
+const MIXED_ANSWER = { title: "Mixed gun and spirit damage", buy: ["Bullet Resilience", "Spirit Resilience", "Battle Vest", "Enchanter's Emblem", "Divine Barrier"] };
 
 const state = { heroes: [], heroByName: new Map(), items: [], itemByName: new Map(), itemByImage: new Map(), base: null,
                 enemies: [], selected: 0, token: 0, clicks: 0 };
@@ -304,11 +306,16 @@ function renderBuildAnswers(e) {
     const hits = r.when.filter(n => names.has(n));
     if (hits.length >= r.min) answers.push({ title: r.title, because: hits, buy: r.buy });
   }
-  const mix = slotMix(e.items), total = mix.weapon + mix.spirit + mix.vitality;
-  if (total && mix.weapon / total >= 0.5) answers.push({ ...GUN_ANSWER, because: [] });
-  if (total && mix.spirit / total >= 0.45) answers.push({ ...SPIRIT_ANSWER, because: [] });
+  // Damage type always gets an answer: compare only their weapon and spirit souls.
+  const mix = slotMix(e.items), dmg = mix.weapon + mix.spirit;
+  if (dmg) {
+    const gunShare = mix.weapon / dmg;
+    const pct = Math.round(gunShare * 100) + "% gun / " + Math.round(100 - gunShare * 100) + "% spirit";
+    const dmgAnswer = gunShare >= 0.6 ? GUN_ANSWER : gunShare <= 0.4 ? SPIRIT_ANSWER : MIXED_ANSWER;
+    answers.push({ ...dmgAnswer, because: [pct + " in damage items"] });
+  }
   if (!answers.length) {
-    box.innerHTML = '<div class="state">Nothing stands out in their build yet. Go by the left column.</div>';
+    box.innerHTML = '<div class="state">They only have vitality items so far. Go by the left column.</div>';
     return;
   }
   for (const a of answers) {
