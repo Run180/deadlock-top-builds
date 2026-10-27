@@ -360,6 +360,19 @@ async function loadDataCounters(e) {
   }
 }
 
+// Item probe from the game mod (temporary): what the game's item icons look like.
+(function showProbe() {
+  const m = location.hash.match(/[&#]dbg=([^&]*)/);
+  if (!m) return;
+  let lines;
+  try { lines = JSON.parse(decodeURIComponent(m[1])); } catch (e) { lines = [decodeURIComponent(m[1])]; }
+  const sec = document.createElement("section");
+  sec.className = "col";
+  sec.innerHTML = '<h2>Item probe</h2><p class="muted">Screenshot this box so the item reading can be fixed.</p><pre style="white-space:pre-wrap;word-break:break-all;font-size:12px;margin:0"></pre>';
+  sec.querySelector("pre").textContent = lines.join("\n");
+  document.querySelector(".wrap").append(sec);
+})();
+
 window.addEventListener("hashchange", () => { state.enemies = enemiesFromHash(); if (state.enemies.length) { state.selected = state.enemies.reduce((b, e, i, a) => e.souls > a[b].souls ? i : b, 0); renderEnemies(); showTarget(); } });
 init();
 </script>
