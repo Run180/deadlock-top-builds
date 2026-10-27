@@ -151,8 +151,40 @@ const $ = (s) => document.querySelector(s);
 
 async function getJSON(path) {
   const r = await fetch(API + path);
-  if (!r.ok) throw new Error("HTTP " + r.status);
+  if (!r.ok) { const err = new Error("HTTP " + r.status); err.status = r.status; throw err; }
   return r.json();
+}
+
+// Cache API answers (memory + browser storage) so Refresh and hero switches don't re-download.
+// shrink() keeps only the fields the page uses, so large answers fit in storage.
+const memo = new Map();
+async function cached(path, ttlMs, shrink) {
+  const now = Date.now();
+  const hit = memo.get(path);
+  if (hit && now - hit.t < ttlMs) return hit.v;
+  try {
+    const saved = JSON.parse(localStorage.getItem("cp:" + path) || "null");
+    if (saved && now - saved.t < ttlMs) { memo.set(path, saved); return saved.v; }
+  } catch (e) {}
+  const v = shrink ? shrink(await getJSON(path)) : await getJSON(path);
+  const entry = { t: now, v };
+  memo.set(path, entry);
+  try { localStorage.setItem("cp:" + path, JSON.stringify(entry)); } catch (e) {}
+  return v;
+}
+const HOUR = 3600e3;
+const slimHero = h => ({ id: h.id, name: h.name, disabled: h.disabled, images: { icon_image_small: h.images.icon_image_small, icon_image_small_webp: h.images.icon_image_small_webp } });
+const slimItem = i => ({ id: i.id, name: i.name, shopable: i.shopable, cost: i.cost, item_tier: i.item_tier, item_slot_type: i.item_slot_type, shop_image: i.shop_image, shop_image_webp: i.shop_image_webp });
+const slimStats = rows => rows.map(r => ({ item_id: r.item_id, wins: r.wins, matches: r.matches }));
+
+// Tell the game mod the page is up (it reloads the panel if this never arrives).
+let readyCount = 0;
+function signalReady() { if (IN_GAME) document.title = "COUNTER_READY:" + (++readyCount); }
+
+function errorText(err, what) {
+  return err && err.status === 429
+    ? "Too many requests to deadlock-api.com. Wait about a minute, then press Refresh."
+    : "Couldn't load " + what + " from deadlock-api.com.";
 }
 
 // "34.2k", "34,200", "34200" -> 34200
@@ -184,7 +216,10 @@ function enemiesFromHash() {
 
 async function init() {
   try {
-    const [heroes, items] = await Promise.all([getJSON("/v1/assets/heroes?only_active=true"), getJSON("/v1/assets/items/by-type/upgrade")]);
+    const [heroes, items] = await Promise.all([
+      cached("/v1/assets/heroes?only_active=true", 24 * HOUR, hs => hs.map(slimHero)),
+      cached("/v1/assets/items/by-type/upgrade", 24 * HOUR, is => is.filter(i => i.shopable).map(slimItem)),
+    ]);
     state.heroes = heroes.filter(h => !h.disabled).sort((a, b) => a.name.localeCompare(b.name));
     for (const h of state.heroes) state.heroByName.set(h.name.toLowerCase(), h);
     state.items = items.filter(i => i.shopable);
@@ -194,8 +229,11 @@ async function init() {
       if (key) state.itemByImage.set(key[1].toLowerCase(), i);
     }
   } catch (e) {
-    $("#data-list").innerHTML = '<div class="state">Couldn\'t reach deadlock-api.com. <button class="retry" type="button">Try again</button></div>';
-    $("#data-list .retry").onclick = init;
+    $("#data-list").innerHTML = '<div class="state"></div>';
+    $("#data-list .state").textContent = errorText(e, "heroes and items");
+    const retry = document.createElement("button"); retry.className = "retry"; retry.type = "button"; retry.textContent = "Try again";
+    retry.onclick = init; $("#data-list .state").append(" ", retry);
+    signalReady();
     return;
   }
   state.enemies = enemiesFromHash();
@@ -217,9 +255,11 @@ async function init() {
     };
     sel.onchange = manualPick; $("#souls-input").onchange = manualPick;
     manualPick();
+    signalReady();
     return;
   }
   showTarget();
+  signalReady();
 }
 
 function renderEnemies() {
@@ -336,12 +376,14 @@ async function loadDataCounters(e) {
   const list = $("#data-list");
   list.innerHTML = '<div class="state">Loading match data for ' + e.hero.name + '…</div>';
   try {
-    if (!state.base) state.base = new Map((await getJSON("/v1/analytics/item-stats?min_matches=200")).map(r => [r.item_id, r]));
+    if (!state.base) state.base = new Map((await cached("/v1/analytics/item-stats?min_matches=200", HOUR, slimStats)).map(r => [r.item_id, r]));
     // Prefer games where this hero ended with at least the souls they have now; widen if too few games.
+    // Floors are rounded down to the thousand so refreshes reuse the cached answer.
+    const souls = Math.floor(e.souls / 1000) * 1000;
     let rows = [], used = "";
-    for (const floor of e.souls >= 5000 ? [e.souls, Math.round(e.souls * 0.7), 0] : [0]) {
+    for (const floor of souls >= 5000 ? [souls, Math.floor(souls * 0.7 / 1000) * 1000, 0] : [0]) {
       const q = `/v1/analytics/item-stats?min_matches=150&enemy_hero_ids=${e.hero.id}` + (floor ? `&min_enemy_networth=${floor}` : "");
-      rows = await getJSON(q);
+      rows = await cached(q, 15 * 60e3, slimStats);
       if (token !== state.token) return;
       if (rows.filter(r => r.matches >= 300).length >= 20) { used = floor ? `games where ${e.hero.name} ended with ${fmtSouls(floor)}+ souls` : `all games against ${e.hero.name}`; break; }
     }
@@ -365,8 +407,10 @@ async function loadDataCounters(e) {
     for (const x of ranked) list.append(pickButton(x.item, "+" + (x.lift * 100).toFixed(1) + "%<small>" + x.matches.toLocaleString() + " games</small>", x.item.item_slot_type + " · " + costText(x.item)));
   } catch (err) {
     if (token !== state.token) return;
-    list.innerHTML = '<div class="state">Couldn\'t load match data. <button class="retry" type="button">Try again</button></div>';
-    list.querySelector(".retry").onclick = () => loadDataCounters(e);
+    list.innerHTML = '<div class="state"></div>';
+    list.querySelector(".state").textContent = errorText(err, "match data");
+    const retry = document.createElement("button"); retry.className = "retry"; retry.type = "button"; retry.textContent = "Try again";
+    retry.onclick = () => loadDataCounters(e); list.querySelector(".state").append(" ", retry);
   }
 }
 
@@ -383,7 +427,18 @@ async function loadDataCounters(e) {
   document.querySelector(".wrap").append(sec);
 })();
 
-window.addEventListener("hashchange", () => { state.enemies = enemiesFromHash(); if (state.enemies.length) { state.selected = state.enemies.reduce((b, e, i, a) => e.souls > a[b].souls ? i : b, 0); renderEnemies(); showTarget(); } });
+// Refresh from the game only changes the #hash: update in place, keeping the chosen hero if still there.
+window.addEventListener("hashchange", () => {
+  if (!state.items.length) return;
+  const prev = state.enemies[state.selected] && state.enemies[state.selected].hero.id;
+  state.enemies = enemiesFromHash();
+  if (state.enemies.length) {
+    const keep = state.enemies.findIndex(e => e.hero.id === prev);
+    state.selected = keep >= 0 ? keep : state.enemies.reduce((b, e, i, a) => e.souls > a[b].souls ? i : b, 0);
+    renderEnemies(); showTarget();
+  }
+  signalReady();
+});
 init();
 </script>
 </body>
