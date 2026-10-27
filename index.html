@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deadlock Top Builds</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: hero rail on the left, ranked build table on the right; stacks on phones. */
+:root {
+  --bg: #f1eee6;
+  --panel: #fbf9f4;
+  --ink: #1f2420;
+  --muted: #69705f;
+  --line: #d9d4c6;
+  --accent: #2f8f5b;      /* Deadlock shop green */
+  --accent-ink: #ffffff;
+  --gold: #b07a27;        /* Valve's Top Daily badge */
+  --good: #2f8f5b;
+  --bad: #b2463a;
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161a17; --panel: #1f2420; --ink: #ece8dc; --muted: #9aa190; --line: #333a33;
+    --accent: #4fc283; --accent-ink: #0f1511; --gold: #d9a24b; --good: #4fc283; --bad: #e0766a;
+    color-scheme: dark;
+  }
+}
+/* Inside Deadlock: always the dark palette, tighter spacing, no sticky rail. */
+:root.in-game {
+  --bg: #161a17; --panel: #1f2420; --ink: #ece8dc; --muted: #9aa190; --line: #333a33;
+  --accent: #4fc283; --accent-ink: #0f1511; --gold: #d9a24b; --good: #4fc283; --bad: #e0766a;
+  color-scheme: dark;
+}
+:root.in-game body { padding-top: 12px; }
+:root.in-game .foot { display: none; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font: 16px/1.45 var(--body);
+  padding: 24px max(16px, env(safe-area-inset-right, 0px)) 40px max(16px, env(safe-area-inset-left, 0px));
+}
+.wrap { max-width: 1200px; margin: 0 auto; display: grid; gap: 20px; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; }
+h1 { font: 700 2.4rem/1 var(--display); letter-spacing: .02em; text-transform: uppercase; margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); margin: 6px 0 0; max-width: 62ch; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }
+.seg button {
+  font: 600 1rem var(--display); letter-spacing: .06em; text-transform: uppercase;
+  padding: 8px 14px; border: 0; background: transparent; color: var(--ink); cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.seg button:focus-visible, .hero:focus-visible, .copy:focus-visible, .retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.main { display: grid; grid-template-columns: 250px 1fr; gap: 20px; align-items: start; }
+@media (max-width: 760px) { .main { grid-template-columns: 1fr; } }
+
+.heroes { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; display: grid; gap: 8px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+@media (max-width: 760px) { .heroes { position: static; max-height: 240px; } }
+.heroes input {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); color: var(--ink); font: inherit;
+}
+.hero-list { display: grid; gap: 2px; }
+.hero {
+  display: flex; align-items: center; gap: 10px; padding: 5px 8px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--ink); font: 500 .95rem var(--body); text-align: left; cursor: pointer;
+}
+.hero img { width: 30px; height: 30px; border-radius: 4px; object-fit: cover; background: var(--line); }
+.hero:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.hero[aria-current="true"] { background: var(--accent); color: var(--accent-ink); }
+
+.board { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+.board-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.board-head img { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; }
+.board-head h2 { font: 700 1.6rem/1 var(--display); text-transform: uppercase; letter-spacing: .03em; margin: 0; }
+.board-head .meta { color: var(--muted); font-size: .9rem; }
+.board-head .grow { flex: 1; min-width: 0; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { font: 600 .8rem var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+th.num, td.num { text-align: right; }
+tr:last-child td { border-bottom: 0; }
+.rank { font: 700 1.3rem var(--display); color: var(--muted); width: 3ch; }
+tr.top3 .rank { color: var(--gold); }
+.name { font-weight: 600; min-width: 220px; }
+.name small { display: block; color: var(--muted); font-weight: 400; font-size: .8rem; }
+.wr-good { color: var(--good); font-weight: 600; }
+.wr-bad { color: var(--bad); font-weight: 600; }
+.bar { height: 4px; border-radius: 2px; background: var(--line); margin-top: 4px; overflow: hidden; }
+.bar span { display: block; height: 100%; background: var(--accent); }
+.copy {
+  font: 500 .85rem var(--mono); padding: 5px 9px; border: 1px solid var(--line); border-radius: 5px;
+  background: var(--bg); color: var(--ink); cursor: pointer; white-space: nowrap;
+}
+.copy.done { border-color: var(--accent); color: var(--accent); }
+.state { padding: 28px 16px; color: var(--muted); }
+.retry { margin-left: 8px; font: inherit; color: var(--accent); background: none; border: 0; cursor: pointer; text-decoration: underline; }
+.foot { color: var(--muted); font-size: .85rem; }
+.foot code { font-family: var(--mono); }
+@media (prefers-reduced-motion: no-preference) { .bar span { transition: width .3s ease; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Top Builds</h1>
+      <p class="sub">The most-played community builds for each hero, from real matches. Copy a BuildID and paste it into <b>Search Text or BuildID</b> in Deadlock's Browse Builds.</p>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Time period">
+        <button type="button" data-period="1" aria-pressed="false">Today</button>
+        <button type="button" data-period="7" aria-pressed="true">This week</button>
+        <button type="button" data-period="30" aria-pressed="false">This month</button>
+      </div>
+      <div class="seg" role="group" aria-label="Sort by">
+        <button type="button" data-sort="matches" aria-pressed="true">Most played</button>
+        <button type="button" data-sort="wr" aria-pressed="false">Best win rate</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="main">
+    <nav class="heroes" aria-label="Heroes">
+      <input id="hero-filter" type="search" placeholder="Find a hero" autocomplete="off">
+      <div class="hero-list" id="hero-list"><div class="state">Loading heroes…</div></div>
+    </nav>
+
+    <section class="board" aria-live="polite">
+      <div class="board-head" id="board-head"><div class="grow"><h2>Pick a hero</h2></div></div>
+      <div id="board-body"><div class="state">Loading…</div></div>
+    </section>
+  </div>
+
+  <p class="foot">Data: <a href="https://deadlock-api.com" target="_blank" rel="noopener">deadlock-api.com</a>, counting the build each player had selected when their match started. Win rate needs enough games to mean much, so “Best win rate” only ranks builds with at least <span id="min-wr-games"></span> games.</p>
+</div>
+
+<script>
+"use strict";
+const API = "https://api.deadlock-api.com";
+const TOP = 15;
+const MIN_MATCHES = { 1: 10, 7: 30, 30: 80 };        // per period, for the stats query
+const MIN_WR_MATCHES = { 1: 100, 7: 400, 30: 1000 };  // to be ranked by win rate
+
+const state = { heroes: [], heroId: null, period: 7, sort: "matches", stats: new Map(), names: new Map(), token: 0 };
+const $ = (s) => document.querySelector(s);
+
+function store(key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
+function recall(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+
+async function getJSON(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+
+function fmt(n) { return n >= 10000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : n.toLocaleString(); }
+
+async function loadHeroes() {
+  try {
+    const heroes = await getJSON("/v1/assets/heroes?only_active=true");
+    state.heroes = heroes.filter(h => !h.disabled).sort((a, b) => a.name.localeCompare(b.name));
+  } catch (e) {
+    $("#hero-list").innerHTML = '<div class="state">Couldn\'t reach deadlock-api.com. Check your connection.<button class="retry" type="button">Try again</button></div>';
+    $("#hero-list .retry").onclick = loadHeroes;
+    return;
+  }
+  renderHeroList();
+  const saved = Number(recall("tb-hero"));
+  selectHero(state.heroes.some(h => h.id === saved) ? saved : state.heroes[0].id);
+}
+
+function renderHeroList() {
+  const q = $("#hero-filter").value.trim().toLowerCase();
+  const list = $("#hero-list");
+  list.innerHTML = "";
+  for (const h of state.heroes) {
+    if (q && !h.name.toLowerCase().includes(q)) continue;
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "hero";
+    b.setAttribute("aria-current", String(h.id === state.heroId));
+    const img = document.createElement("img");
+    img.src = h.images.icon_image_small_webp || h.images.icon_image_small; img.alt = ""; img.loading = "lazy";
+    const span = document.createElement("span"); span.textContent = h.name;
+    b.append(img, span);
+    b.onclick = () => selectHero(h.id);
+    list.append(b);
+  }
+}
+
+function selectHero(id) {
+  state.heroId = id; store("tb-hero", String(id));
+  renderHeroList();
+  load();
+}
+
+async function buildName(id) {
+  if (state.names.has(id)) return state.names.get(id);
+  const p = getJSON("/v1/builds?only_latest=true&build_id=" + id)
+    .then(rows => rows.length ? { name: rows[0].hero_build.name, version: rows[0].hero_build.version, updated: rows[0].hero_build.last_updated_timestamp } : null)
+    .catch(() => null);
+  state.names.set(id, p);
+  return p;
+}
+
+async function load() {
+  const token = ++state.token;
+  const hero = state.heroes.find(h => h.id === state.heroId);
+  renderHead(hero);
+  const key = state.heroId + ":" + state.period;
+  $("#board-body").innerHTML = '<div class="state">Loading ' + (state.period === 1 ? "today's" : state.period === 7 ? "this week's" : "this month's") + ' builds…</div>';
+  try {
+    if (!state.stats.has(key)) {
+      const since = Math.floor(Date.now() / 1000) - state.period * 86400;
+      state.stats.set(key, await getJSON(`/v1/analytics/hero-build-stats/${state.heroId}?min_unix_timestamp=${since}&min_matches=${MIN_MATCHES[state.period]}`));
+    }
+  } catch (e) {
+    state.stats.delete(key);
+    if (token !== state.token) return;
+    $("#board-body").innerHTML = '<div class="state">Couldn\'t load builds from deadlock-api.com.<button class="retry" type="button">Try again</button></div>';
+    $("#board-body .retry").onclick = load;
+    return;
+  }
+  if (token !== state.token) return;
+  render(token);
+}
+
+function renderHead(hero) {
+  const head = $("#board-head");
+  head.innerHTML = "";
+  const img = document.createElement("img");
+  img.src = hero.images.icon_image_small_webp || hero.images.icon_image_small; img.alt = "";
+  const div = document.createElement("div"); div.className = "grow";
+  const h2 = document.createElement("h2"); h2.textContent = hero.name;
+  const meta = document.createElement("div"); meta.className = "meta"; meta.id = "board-meta";
+  div.append(h2, meta);
+  head.append(img, div);
+}
+
+async function render(token) {
+  const rows = state.stats.get(state.heroId + ":" + state.period) || [];
+  const totalGames = rows.reduce((s, r) => s + r.matches, 0);
+  let ranked = rows.map(r => ({ ...r, wr: r.wins / r.matches }));
+  if (state.sort === "wr") ranked = ranked.filter(r => r.matches >= MIN_WR_MATCHES[state.period]).sort((a, b) => b.wr - a.wr);
+  else ranked.sort((a, b) => b.matches - a.matches);
+  ranked = ranked.slice(0, TOP);
+
+  const label = state.period === 1 ? "last 24 hours" : state.period === 7 ? "last 7 days" : "last 30 days";
+  $("#board-meta").textContent = `${fmt(totalGames)} games with a community build · ${label}`;
+  $("#min-wr-games").textContent = MIN_WR_MATCHES[state.period].toLocaleString();
+
+  if (!ranked.length) {
+    $("#board-body").innerHTML = '<div class="state">Not enough games in this period yet. Try a longer period.</div>';
+    return;
+  }
+  const max = Math.max(...ranked.map(r => r.matches));
+  const table = document.createElement("table");
+  table.innerHTML = '<thead><tr><th>#</th><th>Build</th><th class="num">Games</th><th class="num">Players</th><th class="num">Win rate</th><th>BuildID</th></tr></thead>';
+  const tbody = document.createElement("tbody");
+  ranked.forEach((r, i) => {
+    const tr = document.createElement("tr");
+    if (i < 3) tr.className = "top3";
+    const share = totalGames ? (r.matches / totalGames * 100).toFixed(1) : "0";
+    tr.innerHTML = `<td class="rank">${i + 1}</td>
+      <td class="name"><span class="bname">Loading name…</span><small>${share}% of games</small><div class="bar"><span style="width:${(r.matches / max * 100).toFixed(1)}%"></span></div></td>
+      <td class="num">${r.matches.toLocaleString()}</td>
+      <td class="num">${r.players.toLocaleString()}</td>
+      <td class="num ${r.wr >= 0.52 ? "wr-good" : r.wr < 0.48 ? "wr-bad" : ""}">${(r.wr * 100).toFixed(1)}%</td>
+      <td><button class="copy" type="button" title="Copy BuildID">${r.hero_build_id}</button></td>`;
+    tr.querySelector(".copy").onclick = (ev) => copy(ev.currentTarget, String(r.hero_build_id));
+    tbody.append(tr);
+    buildName(r.hero_build_id).then(info => {
+      if (token !== state.token) return;
+      const el = tr.querySelector(".bname");
+      el.textContent = info ? info.name : "Build " + r.hero_build_id + " (no longer public)";
+    });
+  });
+  table.append(tbody);
+  const wrap = document.createElement("div"); wrap.className = "table-wrap"; wrap.append(table);
+  $("#board-body").replaceChildren(wrap);
+}
+
+// Inside Deadlock (opened with #ingame), the game watches the page title: clicking a BuildID
+// asks the game to search for that build. The counter makes repeat clicks register.
+const IN_GAME = location.hash.includes("ingame") || window.TOPBUILDS_IN_GAME === true;
+let selectCount = 0;
+
+async function copy(btn, text) {
+  if (IN_GAME) {
+    document.title = "TOPBUILDS_SELECT:" + text + ":" + (++selectCount);
+    btn.classList.add("done"); btn.textContent = "Opening…";
+    setTimeout(() => { btn.classList.remove("done"); btn.textContent = text; }, 1500);
+    return;
+  }
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {
+    const r = document.createRange(); r.selectNodeContents(btn);
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    return;
+  }
+  btn.classList.add("done"); btn.textContent = "Copied";
+  setTimeout(() => { btn.classList.remove("done"); btn.textContent = text; }, 1200);
+}
+
+document.querySelectorAll("[data-period]").forEach(b => b.onclick = () => {
+  state.period = Number(b.dataset.period); store("tb-period", b.dataset.period);
+  document.querySelectorAll("[data-period]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  if (state.heroId) load();
+});
+document.querySelectorAll("[data-sort]").forEach(b => b.onclick = () => {
+  state.sort = b.dataset.sort;
+  document.querySelectorAll("[data-sort]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  if (state.heroId && state.stats.has(state.heroId + ":" + state.period)) render(state.token);
+});
+$("#hero-filter").addEventListener("input", renderHeroList);
+
+if (IN_GAME) {
+  document.documentElement.classList.add("in-game");
+  document.querySelector(".sub").innerHTML = "The most-played community builds for each hero, from real matches. Click a BuildID to open that build in Browse Builds.";
+}
+
+const savedPeriod = recall("tb-period");
+if (savedPeriod) document.querySelector(`[data-period="${savedPeriod}"]`)?.click();
+loadHeroes();
+</script>
+</body>
+</html>
