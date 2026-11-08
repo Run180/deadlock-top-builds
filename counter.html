@@ -77,6 +77,7 @@ h2 { font: 700 1.25rem/1.1 var(--display); text-transform: uppercase; letter-spa
 .pick img { width: 34px; height: 34px; border-radius: 4px; }
 .pick .nm { font-weight: 600; min-width: 0; }
 .pick .nm small { display: block; color: var(--muted); font-weight: 400; font-size: .8rem; }
+.pick.fits { box-shadow: inset 0 0 0 1px var(--gold); }
 .pick .val { font: 700 1.1rem var(--display); color: var(--accent); font-variant-numeric: tabular-nums; text-align: right; }
 .pick .val small { display: block; font: 400 .75rem var(--body); color: var(--muted); }
 .pick.weapon { border-left: 3px solid var(--weapon); }
@@ -117,7 +118,7 @@ h2 { font: 700 1.25rem/1.1 var(--display); text-transform: uppercase; letter-spa
     </section>
   </div>
 
-  <p class="foot">“+%” is how much higher the item's win rate is against this hero than usual, compared with other items of the same price. Data: <a href="https://deadlock-api.com" target="_blank" rel="noopener">deadlock-api.com</a>.</p>
+  <p class="foot">“+%” is how much higher the item's win rate is against this hero than usual, compared with other items of the same price. A gold outline means the item also answers something they've bought. Data: <a href="https://deadlock-api.com" target="_blank" rel="noopener">deadlock-api.com</a>.</p>
 </div>
 
 <script>
@@ -134,13 +135,44 @@ const BUILD_RULES = [
     min: 2, title: "Lots of small heals", buy: ["Toxic Bullets", "Healbane", "Decay"] },
   { when: ["Unstoppable", "Indomitable", "Debuff Reducer", "Dispel Magic", "Cloak of Opportunity", "Reactive Barrier", "Celestial Blessing"],
     min: 1, title: "Stuns and silences won't stick", buy: ["Cursed Relic", "Nullification Burst", "Toxic Bullets", "Armor Piercer"] },
-  { when: ["Ethereal Shift", "Metal Skin", "Divine Barrier", "Cheat Death", "Spirit Shielding", "Weapon Shielding", "Ancient Shield", "Prism Blast"],
+  { when: ["Ethereal Shift", "Metal Skin", "Divine Barrier", "Cheat Death", "Spirit Shielding", "Weapon Shielding", "Prism Blast"],
     min: 1, title: "They have a get-out-of-death item", buy: ["Cursed Relic", "Silencer", "Knockdown", "Nullification Burst"] },
-  { when: ["Warp Stone", "Majestic Leap", "Fleetfoot", "Magic Carpet", "Kinetic Dash", "Seraphim Wings", "Shadow Step", "Stamina Mastery", "Extra Stamina"],
+  { when: ["Warp Stone", "Majestic Leap", "Fleetfoot", "Magic Carpet", "Kinetic Dash", "Seraphim Wings", "Stamina Mastery", "Extra Stamina"],
     min: 2, title: "Very mobile", buy: ["Capacitor", "Slowing Hex", "Mystical Piano", "Vortex Web"] },
   { when: ["Colossus", "Juggernaut", "Fortitude", "Extra Health", "Bullet Resilience", "Spirit Resilience", "Plated Armor", "Witchmail", "Battle Vest"],
     min: 3, title: "Built tanky", buy: ["Armor Piercer", "Tankbuster", "Escalating Exposure", "Crippling Headshot"] },
 ];
+// What an item does against the enemy, in a few words (shown under each pick).
+const ITEM_WHY = {
+  "Toxic Bullets": "bleeds them and cuts their healing", "Healbane": "cuts their healing when your spirit hits",
+  "Decay": "damages them over time and cuts their healing", "Inhibitor": "cuts their healing and damage",
+  "Cursed Relic": "shuts their items and abilities off for a moment", "Nullification Burst": "breaks through their shields and resists",
+  "Armor Piercer": "your bullets ignore much of their bullet resist", "Silencer": "your bullets silence their abilities",
+  "Knockdown": "stuns them out of the air", "Capacitor": "slows them", "Slowing Hex": "slows them and stops their dashes",
+  "Mystical Piano": "stuns them in place", "Vortex Web": "pulls and holds them in one spot", "Tankbuster": "extra damage based on their max health",
+  "Escalating Exposure": "they take more spirit damage the longer you hit them", "Crippling Headshot": "headshots strip their bullet and spirit resist",
+  "Bullet Resilience": "less damage from their gun", "Metal Skin": "become immune to their bullets for a moment",
+  "Plated Armor": "big bullet resist", "Disarming Hex": "stops them shooting for a moment", "Rusted Barrel": "lowers their fire rate",
+  "Spirit Resilience": "less damage from their spirit", "Spellbreaker": "blocks part of their spirit burst",
+  "Witchmail": "spirit resist and shorter cooldowns when they hit you", "Counterspell": "blocks one of their spells",
+  "Spirit Sap": "lowers their spirit power", "Battle Vest": "bullet and spirit resist", "Enchanter's Emblem": "spirit resist and spirit power",
+  "Divine Barrier": "a shield that saves you or a teammate", "Spirit Shredder": "they take more spirit damage",
+  "Bullet Resist Shredder": "they take more bullet damage", "Mystic Vulnerability": "they take more spirit damage",
+  "Dispel Magic": "clears their debuffs off you", "Debuff Reducer": "their slows and stuns last shorter",
+  "Unstoppable": "ignore their stuns and crowd control", "Ethereal Shift": "dodge their burst for a moment",
+  "Reactive Barrier": "a shield when they stun you", "Return Fire": "sends their bullets back at them",
+  "Spirit Shielding": "a shield against their spirit damage", "Weapon Shielding": "a shield against their gun damage",
+  "Rescue Beam": "heal a teammate they focus", "Guardian Ward": "shield a teammate they focus",
+  "Phantom Strike": "jump on them and disarm them", "Silence Wave": "silences them", "Cold Front": "slows them",
+  "Mystic Slow": "your spirit hits slow them", "Slowing Bullets": "your bullets slow them", "Suppressor": "lowers their fire rate",
+  "Healing Booster": "more healing for you", "Fortitude": "more health and regen", "Colossus": "big damage reduction",
+  "Juggernaut": "lowers their fire rate when they shoot you", "Leech": "heal off the damage you deal",
+  "Warp Stone": "teleport away from them", "Majestic Leap": "jump far out of their reach", "Fleetfoot": "move faster to escape",
+  "Lightning Scroll": "your ultimate stuns them", "Echo Shard": "use your best ability twice",
+  "Cheat Death": "survive a hit that would kill you",
+  "Infuser": "more spirit power and lifesteal", "Siphon Bullets": "steal their health with your bullets",
+};
+
 const GUN_ANSWER = { title: "Mostly gun damage", buy: ["Bullet Resilience", "Metal Skin", "Plated Armor", "Disarming Hex", "Rusted Barrel"] };
 const SPIRIT_ANSWER = { title: "Mostly spirit damage", buy: ["Spirit Resilience", "Spellbreaker", "Witchmail", "Counterspell", "Spirit Sap"] };
 const MIXED_ANSWER = { title: "Mixed gun and spirit damage", buy: ["Bullet Resilience", "Spirit Resilience", "Battle Vest", "Enchanter's Emblem", "Divine Barrier"] };
@@ -310,6 +342,8 @@ function showTarget() {
   loadDataCounters(e);
 }
 
+function whyText(item, fallback) { return ITEM_WHY[item.name] || fallback; }
+
 function pickButton(item, valueHtml, sub) {
   const b = document.createElement("button");
   b.type = "button"; b.className = "pick " + item.item_slot_type;
@@ -366,9 +400,43 @@ function renderBuildAnswers(e) {
     box.append(p);
     for (const n of a.buy) {
       const item = state.itemByName.get(n);
-      if (item && !names.has(n)) box.append(pickButton(item, costHtml(item), item.item_slot_type));
+      if (item && !names.has(n)) box.append(pickButton(item, costHtml(item), whyText(item, item.item_slot_type)));
     }
   }
+  const team = teamDamage();
+  if (team) {
+    const p = document.createElement("p"); p.className = "why muted";
+    p.textContent = "Whole enemy team: " + team;
+    box.append(p);
+  }
+}
+
+// The enemy team's gun vs spirit souls, across everyone whose items we can see.
+function teamDamage() {
+  const all = state.enemies.flatMap(e => e.items || []);
+  const mix = slotMix(all), dmg = mix.weapon + mix.spirit;
+  if (!dmg || state.enemies.length < 2) return "";
+  const gun = Math.round(mix.weapon / dmg * 100);
+  return gun + "% gun / " + (100 - gun) + "% spirit in damage items" +
+    (gun >= 60 ? ", so bullet resist pays off against all of them." : gun <= 40 ? ", so spirit resist pays off against all of them." : ".");
+}
+
+// Which of their items each answer item deals with, from the build rules that fire for them.
+function answersFor(e) {
+  const names = new Set(e.items.map(i => i.name)), out = new Map();
+  for (const r of BUILD_RULES) {
+    const hits = r.when.filter(n => names.has(n));
+    if (hits.length < r.min) continue;
+    for (const n of r.buy) if (!out.has(n)) out.set(n, hits);
+  }
+  const mix = slotMix(e.items), dmg = mix.weapon + mix.spirit;
+  if (dmg) {
+    const gun = mix.weapon / dmg;
+    const a = gun >= 0.6 ? GUN_ANSWER : gun <= 0.4 ? SPIRIT_ANSWER : MIXED_ANSWER;
+    const label = gun >= 0.6 ? "gun build" : gun <= 0.4 ? "spirit build" : "mixed build";
+    for (const n of a.buy) if (!out.has(n)) out.set(n, [label]);
+  }
+  return out;
 }
 
 async function loadDataCounters(e) {
@@ -376,13 +444,15 @@ async function loadDataCounters(e) {
   const list = $("#data-list");
   list.innerHTML = '<div class="state">Loading match data for ' + e.hero.name + '…</div>';
   try {
-    if (!state.base) state.base = new Map((await cached("/v1/analytics/item-stats?min_matches=200", HOUR, slimStats)).map(r => [r.item_id, r]));
+    // The last 30 days, rounded to the day so cached answers get reused (all of history times out).
+    const since = Math.floor(Date.now() / 86400e3 - 30) * 86400;
+    if (!state.base) state.base = new Map((await cached(`/v1/analytics/item-stats?min_matches=200&min_unix_timestamp=${since}`, HOUR, slimStats)).map(r => [r.item_id, r]));
     // Prefer games where this hero ended with at least the souls they have now; widen if too few games.
     // Floors are rounded down to the thousand so refreshes reuse the cached answer.
     const souls = Math.floor(e.souls / 1000) * 1000;
     let rows = [], used = "";
     for (const floor of souls >= 5000 ? [souls, Math.floor(souls * 0.7 / 1000) * 1000, 0] : [0]) {
-      const q = `/v1/analytics/item-stats?min_matches=150&enemy_hero_ids=${e.hero.id}` + (floor ? `&min_enemy_networth=${floor}` : "");
+      const q = `/v1/analytics/item-stats?min_matches=150&min_unix_timestamp=${since}&enemy_hero_ids=${e.hero.id}` + (floor ? `&min_enemy_networth=${floor}` : "");
       rows = await cached(q, 15 * 60e3, slimStats);
       if (token !== state.token) return;
       if (rows.filter(r => r.matches >= 300).length >= 20) { used = floor ? `games where ${e.hero.name} ended with ${fmtSouls(floor)}+ souls` : `all games against ${e.hero.name}`; break; }
@@ -397,14 +467,24 @@ async function loadDataCounters(e) {
       shift[tier] = ids.reduce((s, r) => s + raw.get(r.item_id) * r.matches, 0) / ids.reduce((s, r) => s + r.matches, 0);
     }
     const held = new Set(e.items.map(i => i.id));
+    // Items that also answer what they've bought rank a little higher (half a point), so the list
+    // follows their actual build, not only their hero.
+    const answers = answersFor(e);
+    const score = x => x.lift + (x.answers ? 0.005 : 0);
     const ranked = rows.map(r => {
-      const wr = r.wins / r.matches;
-      return { item: byId.get(r.item_id), lift: raw.get(r.item_id) - shift[byId.get(r.item_id).item_tier], se: Math.sqrt(wr * (1 - wr) / r.matches), matches: r.matches };
-    }).filter(x => x.lift > 0 && x.lift >= 2 * x.se && !held.has(x.item.id)).sort((a, b) => b.lift - a.lift).slice(0, 8);
+      const wr = r.wins / r.matches, item = byId.get(r.item_id);
+      return { item, lift: raw.get(r.item_id) - shift[item.item_tier], se: Math.sqrt(wr * (1 - wr) / r.matches), matches: r.matches, answers: answers.get(item.name) };
+    }).filter(x => x.lift > 0 && x.lift >= 2 * x.se && !held.has(x.item.id)).sort((a, b) => score(b) - score(a)).slice(0, 8);
     $("#data-note").textContent = "From " + used + ", last 30 days.";
     list.replaceChildren();
     if (!ranked.length) { list.innerHTML = '<div class="state">No item clearly beats this hero in the data. Use the build answers.</div>'; return; }
-    for (const x of ranked) list.append(pickButton(x.item, "+" + (x.lift * 100).toFixed(1) + "%<small>" + x.matches.toLocaleString() + " games</small>", x.item.item_slot_type + " · " + costText(x.item)));
+    for (const x of ranked) {
+      const what = whyText(x.item, x.item.item_slot_type + " · " + costText(x.item));
+      const vs = x.answers ? " · answers their " + x.answers.slice(0, 2).join(", ") : "";
+      const b = pickButton(x.item, "+" + (x.lift * 100).toFixed(1) + "%<small>" + x.matches.toLocaleString() + " games</small>", what + vs);
+      if (x.answers) b.classList.add("fits");
+      list.append(b);
+    }
   } catch (err) {
     if (token !== state.token) return;
     list.innerHTML = '<div class="state"></div>';
