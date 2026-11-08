@@ -13,15 +13,20 @@
 // The Top Builds tab in Deadlock's build browser opens this page in a hidden web panel with a
 // request in the address: relay.html#q={"id":7,"cmd":"builds","hero":1,"days":7,"badge":0}.
 // A Panorama script can only read the page title, so the answer goes back as a series of
-// titles: "TBR|<id>|<part>|<parts>|<chunk of JSON>". The game script stitches the chunks together.
+// titles: "TBR|<id>|<part>/<parts>|<chunk of JSON>" (parts counted from 0), or "TBR|<id>|e|<error>".
+// The game script stitches the chunks together. (Same shape as the Better Builds relay's "BG1|" titles,
+// so one reader handles both.)
 //
 // cmd "heroes": [[id, class_name, name], ...]
+// cmd "stats":  { hero, days, total, fair, s: { build id: [games, wins, players] } } for every build
+//               with a few games in the period (win rate and games next to the High Elo lists)
 // cmd "builds": { hero, days, badge, total, patchAt, rows: [[build id, name, author id, author name,
 //                 updated, games, wins, players, average badge, author badge, version], ...] }
 const API = "https://api.deadlock-api.com";
 const CHUNK = 3500;          // the game passes titles up to 4096 characters
 const MAX_ROWS = 40;
 const MIN_GAMES = { 1: 10, 7: 20, 30: 50 };
+const FAIR_GAMES = { 1: 30, 7: 100, 30: 250 };
 const BUILD_CACHE_SECONDS = 6 * 3600;
 
 function store(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {} }
@@ -62,6 +67,17 @@ async function latestPatch() {
   const at = Math.max(0, ...list.map(p => Math.floor(Date.parse(p.pub_date) / 1000) || 0));
   store("tbr-patch", { at: Date.now() / 1000, v: at });
   return at;
+}
+
+async function stats(q) {
+  const days = [1, 7, 30].includes(q.days) ? q.days : 7;
+  const since = Math.floor(Date.now() / 1000) - days * 86400;
+  const rows = await getJSON(`/v1/analytics/hero-build-stats/${Number(q.hero)}?min_unix_timestamp=${since}&min_matches=2`);
+  const total = rows.reduce((t, r) => t + r.matches, 0);
+  const fair = FAIR_GAMES[days];   // fewer games than this and a win rate is mostly noise
+  const s = {};
+  rows.forEach(r => { s[r.hero_build_id] = [r.matches, r.wins, r.players]; });
+  return { hero: Number(q.hero), days, total, fair, s };
 }
 
 async function builds(q) {
@@ -113,7 +129,7 @@ function answer(id, data) {
   const parts = Math.max(1, Math.ceil(json.length / CHUNK));
   busy = busy.then(async () => {
     for (let i = 0; i < parts; i++) {
-      document.title = `TBR|${id}|${i + 1}|${parts}|` + json.slice(i * CHUNK, (i + 1) * CHUNK);
+      document.title = `TBR|${id}|${i}/${parts}|` + json.slice(i * CHUNK, (i + 1) * CHUNK);
       await new Promise(r => setTimeout(r, 30));
     }
   });
@@ -128,10 +144,10 @@ async function handle() {
   let q;
   try { q = JSON.parse(decodeURIComponent(m[1])); } catch (e) { return; }
   try {
-    const data = q.cmd === "heroes" ? await heroes() : await builds(q);
-    answer(q.id, { ok: true, data });
+    const data = q.cmd === "heroes" ? await heroes() : q.cmd === "stats" ? await stats(q) : await builds(q);
+    answer(q.id, data);
   } catch (e) {
-    answer(q.id, { ok: false, error: String(e.message || e) });
+    busy = busy.then(() => { document.title = `TBR|${q.id}|e|` + String(e.message || e); });
   }
 }
 window.addEventListener("hashchange", handle);
