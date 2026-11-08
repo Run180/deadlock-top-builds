@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TBR|ready</title>
+<style>body { background: #111; color: #888; font: 14px sans-serif; margin: 8px; }</style>
+</head>
+<body>
+<p>Top Builds relay. The game opens this page out of sight to fetch build lists from deadlock-api.com.</p>
+<script>
+"use strict";
+// The Top Builds tab in Deadlock's build browser opens this page in a hidden web panel with a
+// request in the address: relay.html#q={"id":7,"cmd":"builds","hero":1,"days":7,"badge":0}.
+// A Panorama script can only read the page title, so the answer goes back as a series of
+// titles: "TBR|<id>|<part>|<parts>|<chunk of JSON>". The game script stitches the chunks together.
+//
+// cmd "heroes": [[id, class_name, name], ...]
+// cmd "builds": { hero, days, badge, total, patchAt, rows: [[build id, name, author id, author name,
+//                 updated, games, wins, players, average badge, author badge, version], ...] }
+const API = "https://api.deadlock-api.com";
+const CHUNK = 3500;          // the game passes titles up to 4096 characters
+const MAX_ROWS = 40;
+const MIN_GAMES = { 1: 10, 7: 20, 30: 50 };
+const BUILD_CACHE_SECONDS = 6 * 3600;
+
+function store(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {} }
+function recall(key, maxAge) {
+  try {
+    const kept = JSON.parse(localStorage.getItem(key) || "null");
+    if (kept && Date.now() / 1000 - kept.at < maxAge) return kept.v;
+  } catch (e) {}
+  return null;
+}
+
+async function getJSON(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error("deadlock-api answered " + r.status);
+  return r.json();
+}
+
+async function heroes() {
+  const list = await getJSON("/v1/assets/heroes?only_active=true");
+  return list.filter(h => !h.disabled).map(h => [h.id, h.class_name, h.name]);
+}
+
+async function buildInfo(id) {
+  const key = "tbr-build-" + id;
+  const kept = recall(key, BUILD_CACHE_SECONDS);
+  if (kept) return kept;
+  const rows = await getJSON("/v1/builds?only_latest=true&build_id=" + id).catch(() => []);
+  const b = rows.length ? rows[0].hero_build : null;
+  const info = b ? [b.name, b.author_account_id, b.last_updated_timestamp, b.version] : null;
+  store(key, { at: Date.now() / 1000, v: info });
+  return info;
+}
+
+async function latestPatch() {
+  const kept = recall("tbr-patch", 3600);
+  if (kept) return kept;
+  const list = await getJSON("/v1/patches").catch(() => []);
+  const at = Math.max(0, ...list.map(p => Math.floor(Date.parse(p.pub_date) / 1000) || 0));
+  store("tbr-patch", { at: Date.now() / 1000, v: at });
+  return at;
+}
+
+async function builds(q) {
+  const days = [1, 7, 30].includes(q.days) ? q.days : 7;
+  const badge = Number(q.badge) || 0;
+  const since = Math.floor(Date.now() / 1000) - days * 86400;
+  let path = `/v1/analytics/hero-build-stats/${Number(q.hero)}?min_unix_timestamp=${since}&min_matches=${MIN_GAMES[days]}&include_performance=true`;
+  if (badge) path += "&min_average_badge=" + badge;
+  const [stats, patchAt] = await Promise.all([getJSON(path), latestPatch()]);
+  const total = stats.reduce((s, r) => s + r.matches, 0);
+
+  // Keep the most played builds and the best win rates among builds with a fair number of games,
+  // so every sort in the game has something to show.
+  const byGames = [...stats].sort((a, b) => b.matches - a.matches);
+  const fair = Math.max(MIN_GAMES[days], Math.round((byGames[9] || byGames[byGames.length - 1] || { matches: 0 }).matches / 2));
+  const byWin = stats.filter(r => r.matches >= fair).sort((a, b) => b.wins / b.matches - a.wins / a.matches);
+  const picked = new Map();
+  for (let i = 0; picked.size < MAX_ROWS && (i < byGames.length || i < byWin.length); i++) {
+    if (byGames[i]) picked.set(byGames[i].hero_build_id, byGames[i]);
+    if (byWin[i] && picked.size < MAX_ROWS) picked.set(byWin[i].hero_build_id, byWin[i]);
+  }
+
+  const list = [...picked.values()];
+  const infos = await Promise.all(list.map(r => buildInfo(r.hero_build_id)));
+  const authors = [...new Set(infos.filter(Boolean).map(i => i[1]).filter(Boolean))];
+  const names = {}, badges = {};
+  if (authors.length) {
+    const ids = authors.join(",");
+    const [steam, ranks] = await Promise.all([
+      getJSON("/v1/players/steam?account_ids=" + ids).catch(() => []),
+      getJSON("/v1/players/rank?account_ids=" + ids).catch(() => [])
+    ]);
+    steam.forEach(s => { names[s.account_id] = s.personaname || ""; });
+    ranks.forEach(r => { badges[r.account_id] = r.badge || 0; });
+  }
+  const rows = [];
+  list.forEach((r, i) => {
+    const info = infos[i];
+    if (!info) return;   // no longer public: the game could not load it anyway
+    rows.push([r.hero_build_id, info[0], info[1], names[info[1]] || "", info[2], r.matches, r.wins, r.players,
+               Math.round((r.avg_average_badge || 0) * 10) / 10, badges[info[1]] || 0, info[3]]);
+  });
+  return { hero: Number(q.hero), days, badge, total, fair, patchAt, rows };
+}
+
+let busy = Promise.resolve();
+function answer(id, data) {
+  const json = JSON.stringify(data);
+  const parts = Math.max(1, Math.ceil(json.length / CHUNK));
+  busy = busy.then(async () => {
+    for (let i = 0; i < parts; i++) {
+      document.title = `TBR|${id}|${i + 1}|${parts}|` + json.slice(i * CHUNK, (i + 1) * CHUNK);
+      await new Promise(r => setTimeout(r, 30));
+    }
+  });
+}
+
+let lastHash = "";
+async function handle() {
+  if (location.hash === lastHash) return;
+  lastHash = location.hash;
+  const m = /[#&]q=([^&]+)/.exec(location.hash);
+  if (!m) return;
+  let q;
+  try { q = JSON.parse(decodeURIComponent(m[1])); } catch (e) { return; }
+  try {
+    const data = q.cmd === "heroes" ? await heroes() : await builds(q);
+    answer(q.id, { ok: true, data });
+  } catch (e) {
+    answer(q.id, { ok: false, error: String(e.message || e) });
+  }
+}
+window.addEventListener("hashchange", handle);
+handle();
+</script>
+</body>
+</html>
